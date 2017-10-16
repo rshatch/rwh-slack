@@ -125,10 +125,10 @@ def expel(channel,rerun=False):
         #             chance of spitting something out, rerunpercent = the
         #             percentage chance that it'll spit two things out.
         if numitems <= 5:
-            percent = 0
+            percent = 12
             rerunpercent = 0
         elif numitems <= 10:
-            percent = 90
+            percent = 25
             rerunpercent = 0
         elif numitems <= 15:
             percent = 40
