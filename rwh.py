@@ -5,6 +5,7 @@ from slackclient import SlackClient
 from dumper import dump
 from datetime import datetime, timedelta
 from random import randint
+import pickle
 
 # starterbot's ID as an environment variable
 BOT_ID = os.environ.get("BOT_ID")
@@ -17,6 +18,7 @@ SIMPLE = re.compile(r"^to (?:heck|hell) with (.*?)[\.\?!]*$", flags=re.I)
 # instantiate Slack & Twilio clients
 slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 items = {}
+
 
 def parse_slack_output(slack_rtm_output):
     """
@@ -66,6 +68,7 @@ def feed_on(match, channel):
     else:
         items[channel] = [item]
 
+    pickle.dump( items, open( "hell.p", "wb" ) )
     action = "sneaks out a scaly hand and grabs " + match + "!"
     slack_client.api_call("chat.meMessage", channel=channel,
                           text=action, as_user=True)
@@ -171,6 +174,7 @@ def expel(channel,rerun=False):
         if rerunchance <= rerunpercent:
             expel(channel, rerun=True)
 
+
 def time_pp(delta):
     days = delta.days
     hours = delta.seconds / 3600
@@ -185,11 +189,14 @@ def time_pp(delta):
 
 if __name__ == "__main__":
     READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
-    if slack_client.rtm_connect():   
+    if slack_client.rtm_connect():
+        try:
+            items = pickle.load(open( "hell.p", "rb" ))
+        except:
+            print("Something went wrong unpickling.")
         print("StarterBot connected and running!")
         while True:
             parse_slack_output(slack_client.rtm_read())
             time.sleep(READ_WEBSOCKET_DELAY)
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
-
