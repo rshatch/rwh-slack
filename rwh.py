@@ -9,6 +9,9 @@ import pickle
 
 # starterbot's ID as an environment variable
 BOT_ID = os.environ.get("BOT_ID")
+# retry delay so we don't hammer the server if it's down
+CONNECT_DELAY = 1
+READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
 
 # constants
 EMOTED = re.compile(r"^(?:([^ ]+ly) )?(?:feed|send|da[mr]n|punt|tosse|smite|condemn|hurl|throw|kick|cast|banishe|drag|pull|consign|pushe|shove|drop|give)s (.*) (?:(?:in)?to|at) (?:heck|hell)([,\.]? +.*?)?[\.\?!]*$", flags=re.I)
@@ -187,16 +190,27 @@ def time_pp(delta):
     duration = ', '.join(filter(None, [days_str, hours_str, min_str, sec_str]))
     return duration
 
-if __name__ == "__main__":
-    READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
-    if slack_client.rtm_connect():
+def connect():    
+    if slack_client.rtm_connect():   
         try:
             items = pickle.load(open( "hell.p", "rb" ))
         except:
             print("Something went wrong unpickling.")
+
         print("StarterBot connected and running!")
         while True:
-            parse_slack_output(slack_client.rtm_read())
-            time.sleep(READ_WEBSOCKET_DELAY)
+            try:
+                parse_slack_output(slack_client.rtm_read())
+                time.sleep(READ_WEBSOCKET_DELAY)
+            except:
+                time.sleep(CONNECT_DELAY)
+                # exponential backoff
+                CONNECT_DELAY = CONNECT_DELAY * 2
+                connect()
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
+
+
+if __name__ == "__main__":
+    connect()
+
