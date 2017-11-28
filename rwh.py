@@ -6,6 +6,15 @@ from dumper import dump
 from datetime import datetime, timedelta
 from random import randint
 import pickle
+import logging as log
+
+# basic log config.
+log.basicConfig(
+    format='%(asctime)s %(levelname)s: %(message)s', 
+    datefmt='%m/%d/%Y %I:%M:%S %p',
+    filename='bot.log',
+    level=log.DEBUG
+    )
 
 # starterbot's ID as an environment variable
 BOT_ID = os.environ.get("BOT_ID")
@@ -47,7 +56,7 @@ def parse_slack_output(slack_rtm_output):
                     item = re.sub(r"^(?:(?:him|her|hir|them)self|themselves)", nick, item, flags=re.I)
                     feed_on(item, channel)
                     expel(channel)
-                if re.match(r"^hell.*tally\??$", output['text'], flags=re.I):
+                if re.match(r"^hell.*tally[\?\.]?$", output['text'], flags=re.I):
                     if channel in items:
                         numitems = len(items[channel])
                     else:
@@ -71,7 +80,9 @@ def feed_on(match, channel):
     else:
         items[channel] = [item]
 
-    pickle.dump( items, open( "hell.p", "wb" ) )
+    cucumber = open( "hell.p", "wb" )
+    pickle.dump( items, cucumber )
+    cucumber.close()
     action = "sneaks out a scaly hand and grabs " + match + "!"
     slack_client.api_call("chat.meMessage", channel=channel,
                           text=action, as_user=True)
@@ -96,14 +107,6 @@ def simple_said(text):
         item = say.group(1)
         return item
     return None  
-
-def tally(text):
-    tally = re.match(r"^tally\??$", text)
-    if tally:
-        item = say.group(1)
-        return item
-    return None  
-
 
 def remove_random(channel):
     if channel in items and len(items[channel]):
@@ -194,11 +197,12 @@ def connect():
     if slack_client.rtm_connect():   
         try:
             items = pickle.load(open( "hell.p", "rb" ))
+            log.info("Successfully unpickled items.")
         except Exception as e:
-            print("Something went wrong unpickling.")
-            print(e)
+            log.warning("Something went wrong unpickling.")
+            log.warning(e)
 
-        print("StarterBot connected and running!")
+        log.info("StarterBot connected and running!")
         while True:
             try:
                 parse_slack_output(slack_client.rtm_read())
@@ -209,7 +213,7 @@ def connect():
                 CONNECT_DELAY = CONNECT_DELAY * 2
                 connect()
     else:
-        print("Connection failed. Invalid Slack token or bot ID?")
+        log.info("Connection failed. Invalid Slack token or bot ID?")
 
 
 if __name__ == "__main__":
