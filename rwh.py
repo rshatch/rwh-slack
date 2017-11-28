@@ -194,8 +194,9 @@ def connect():
     if slack_client.rtm_connect():   
         try:
             items = pickle.load(open( "hell.p", "rb" ))
-        except:
+        except Exception as e:
             print("Something went wrong unpickling.")
+            print(e)
 
         print("StarterBot connected and running!")
         while True:
