@@ -80,9 +80,8 @@ def feed_on(match, channel):
     else:
         items[channel] = [item]
 
-    cucumber = open( "hell.p", "wb" )
-    pickle.dump( items, cucumber )
-    cucumber.close()
+    with open('hell.p', 'wb') as cucumber:
+        pickle.dump( items, cucumber )
     action = "sneaks out a scaly hand and grabs " + match + "!"
     slack_client.api_call("chat.meMessage", channel=channel,
                           text=action, as_user=True)
@@ -193,16 +192,18 @@ def time_pp(delta):
     duration = ', '.join(filter(None, [days_str, hours_str, min_str, sec_str]))
     return duration
 
-def connect():    
+def connect():
+    global CONNECT_DELAY
     if slack_client.rtm_connect():   
         try:
-            items = pickle.load(open( "hell.p", "rb" ))
+            with open('hell.p', 'wb') as cucumber:
+                items = pickle.load(cucumber)
             log.info("Successfully unpickled items.")
         except Exception as e:
             log.warning("Something went wrong unpickling.")
             log.warning(e)
 
-        log.info("StarterBot connected and running!")
+        log.info("HellBot connected and running!")
         while True:
             try:
                 parse_slack_output(slack_client.rtm_read())
