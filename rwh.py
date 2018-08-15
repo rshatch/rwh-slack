@@ -18,8 +18,6 @@ log.basicConfig(
 
 # starterbot's ID as an environment variable
 BOT_ID = os.environ.get("BOT_ID")
-# retry delay so we don't hammer the server if it's down
-CONNECT_DELAY = 1
 READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
 
 # constants
@@ -86,26 +84,30 @@ def feed_on(match, channel):
     slack_client.api_call("chat.meMessage", channel=channel,
                           text=action, as_user=True)
 
+
 def emoted(text):
     emote = EMOTED.match(text)
     if emote:
         item = ' '.join(filter(None, [emote.group(2), emote.group(3),  emote.group(1)]))
         return item
-    return None  
+    return None
+
 
 def said(text):
     say = SAID.match(text)
     if say:
         item = ' '.join(filter(None, [say.group(1), say.group(2)]))
         return item
-    return None  
+    return None
+
 
 def simple_said(text):
     say = SAID.match(text)
     if say:
         item = say.group(1)
         return item
-    return None  
+    return None
+
 
 def remove_random(channel):
     if channel in items and len(items[channel]):
@@ -116,6 +118,7 @@ def remove_random(channel):
         return item['name'], item['time']
     else:
         return None, None
+
 
 def expel(channel,rerun=False):
     if channel in items:
@@ -192,9 +195,10 @@ def time_pp(delta):
     duration = ', '.join(filter(None, [days_str, hours_str, min_str, sec_str]))
     return duration
 
+
 def connect():
     global CONNECT_DELAY
-    if slack_client.rtm_connect():   
+    if slack_client.rtm_connect(auto_reconnect=True):
         try:
             with open('hell.p', 'wb') as cucumber:
                 items = pickle.load(cucumber)
@@ -205,14 +209,8 @@ def connect():
 
         log.info("HellBot connected and running!")
         while True:
-            try:
-                parse_slack_output(slack_client.rtm_read())
-                time.sleep(READ_WEBSOCKET_DELAY)
-            except:
-                time.sleep(CONNECT_DELAY)
-                # exponential backoff
-                CONNECT_DELAY = CONNECT_DELAY * 2
-                connect()
+            parse_slack_output(slack_client.rtm_read())
+            time.sleep(READ_WEBSOCKET_DELAY)
     else:
         log.info("Connection failed. Invalid Slack token or bot ID?")
 
