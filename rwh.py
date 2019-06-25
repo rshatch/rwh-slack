@@ -1,7 +1,7 @@
 import os
 import time
 import re
-from slackclient import SlackClient
+import slack
 from dumper import dump
 from datetime import datetime, timedelta
 from random import randint
@@ -16,9 +16,6 @@ log.basicConfig(
     level=log.DEBUG
     )
 
-# starterbot's ID as an environment variable
-BOT_ID = os.environ.get("BOT_ID")
-READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
 
 # constants
 EMOTED = re.compile(r"^(?:([^ ]+ly) )?(?:feed|send|da[mr]n|punt|tosse|smite|condemn|hurl|throw|kick|cast|banishe|drag|pull|consign|pushe|shove|drop|give)s (.*) (?:(?:in)?to|at) (?:heck|hell)([,\.]? +.*?)?[\.\?!]*$", flags=re.I)
@@ -26,53 +23,51 @@ SAID = re.compile(r"^(?:feed|send|da[mr]n|punt|toss|smite|condemn|hurl|throw|kic
 SIMPLE = re.compile(r"^to (?:heck|hell) with (.*?)[\.\?!]*$", flags=re.I)
 
 # instantiate Slack & Twilio clients
-slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
+rtmclient = slack.RTMClient(token=os.environ.get('SLACK_BOT_TOKEN'))
 items = {}
 
-
-def parse_slack_output(slack_rtm_output):
+@slack.RTMClient.run_on(event='message')
+def parse_slack_output(**payload):
     """
         The Slack Real Time Messaging API is an events firehose.
         this parsing function returns None unless a message is
         directed at the Bot, based on its ID.
     """
-    output_list = slack_rtm_output
-    if output_list and len(output_list) > 0:
-        for output in output_list:
-            if output and 'text' in output:
-                channel = output['channel']
-                say = said(output['text'])
-                emote = emoted(output['text'])
-                simple = simple_said(output['text'])
-                action = filter(None, [say, emote, simple])
-                if len(action) > 0:
-                    item = action[0]
-                    user = slack_client.api_call("users.info", user=output['user'])
-                    nick = user['user']['profile']['display_name']
-                    my = nick + "'" if re.match(r"s$", nick, flags=re.I) else nick + "'s"
-                    item = re.sub(r"^(?:his|her|hir|their|my)", my, item, flags=re.I)
-                    item = re.sub(r"^(?:(?:him|her|hir|them)self|themselves)", nick, item, flags=re.I)
-                    feed_on(item, channel)
-                    expel(channel)
-                if re.match(r"^hell.*tally[\?\.]?$", output['text'], flags=re.I):
-                    if channel in items:
-                        numitems = len(items[channel])
-                    else:
-                        numitems = 0
-                    tally = "I am lord over " + str(numitems) + " damned souls."
-                    slack_client.api_call("chat.postMessage", channel=channel,
-                          text=tally, as_user=True)
+    data = payload['data']
+    channel = data['channel']
+    say = said(data['text'])
+    web_client = payload['web_client']
+    emote = emoted(data['text'])
+    simple = simple_said(data['text'])
+    action = [i for i in [say, emote, simple] if i]
+    if len(action) > 0:
+        item = action[0]
+        user = web_client.users_info(user=data['user'])
+        nick = user['user']['profile']['display_name']
+        my = nick + "'" if re.match(r"s$", nick, flags=re.I) else nick + "'s"
+        item = re.sub(r"^(?:his|her|hir|their|my)", my, item, flags=re.I)
+        item = re.sub(r"^(?:(?:him|her|hir|them)self|themselves)", nick, item, flags=re.I)
+        feed_on(web_client, item, channel)
+        expel(web_client, channel)
+    if re.match(r"^hell.*tally[\?\.]?$", data['text'], flags=re.I):
+        if channel in items:
+            numitems = len(items[channel])
+        else:
+            numitems = 0
+        tally = f"I am lord over {numitems!s} damned souls."
+        web_client.chat_postMessage(channel=channel,
+              text=tally, as_user=True)
 
 
 
-def feed_on(match, channel):
+def feed_on(web_client, match, channel):
     """
         This method takes an item and the channel it was fed to hell in.
         It adds the item to the list for that channel along with the time it was
         fed into hell, and then emotes eating it to the channel.
     """
 
-    item = {"name" : match, "time" : datetime.utcnow() }
+    item = {"name" : match, "time" : datetime.utcnow().isoformat() }
     if channel in items:
         items[channel].append(item)
     else:
@@ -80,8 +75,8 @@ def feed_on(match, channel):
 
     with open('hell.p', 'wb') as cucumber:
         pickle.dump( items, cucumber )
-    action = "sneaks out a scaly hand and grabs " + match + "!"
-    slack_client.api_call("chat.meMessage", channel=channel,
+    action = f"sneaks out a scaly hand and grabs {match}!"
+    web_client.chat_meMessage(channel=channel,
                           text=action, as_user=True)
 
 
@@ -120,7 +115,7 @@ def remove_random(channel):
         return None, None
 
 
-def expel(channel,rerun=False):
+def expel(web_client, channel,rerun=False):
     if channel in items:
         numitems = len(items[channel])
     else:
@@ -167,7 +162,7 @@ def expel(channel,rerun=False):
         if random:
             if time:
                 now = datetime.utcnow()
-                duration = time_pp(now - time)
+                duration = time_pp(now - datetime.fromisoformat(time))
             else:
                 duration = "an unknown amount of time"
 
@@ -176,11 +171,11 @@ def expel(channel,rerun=False):
         else:
             emit = "emit a sudden"
 
-        action = "Hell's depths %(emit)s roar as it expels %(random)s. (stayed in Hell for %(duration)s)" % locals()
-        slack_client.api_call("chat.meMessage", channel=channel,
+        action = f"Hell's depths {emit} roar as it expels {random}. (stayed in Hell for {duration})"
+        web_client.chat_meMessage(channel=channel,
                           text=action, as_user=True)
         if rerunchance <= rerunpercent:
-            expel(channel, rerun=True)
+            expel(web_client, channel, rerun=True)
 
 
 def time_pp(delta):
@@ -196,25 +191,13 @@ def time_pp(delta):
     return duration
 
 
-def connect():
-    global CONNECT_DELAY
-    if slack_client.rtm_connect(auto_reconnect=True):
-        try:
-            with open('hell.p', 'wb') as cucumber:
-                items = pickle.load(cucumber)
-            log.info("Successfully unpickled items.")
-        except Exception as e:
-            log.warning("Something went wrong unpickling.")
-            log.warning(e)
+try:
+    with open('hell.p', 'wb') as cucumber:
+        items = pickle.load(cucumber)
+    log.info("Successfully unpickled items.")
+except Exception as e:
+    log.warning("Something went wrong unpickling.")
+    log.warning(e)
 
-        log.info("HellBot connected and running!")
-        while True:
-            parse_slack_output(slack_client.rtm_read())
-            time.sleep(READ_WEBSOCKET_DELAY)
-    else:
-        log.info("Connection failed. Invalid Slack token or bot ID?")
-
-
-if __name__ == "__main__":
-    connect()
+rtmclient.start()
 
